@@ -179,6 +179,11 @@ async def smart_split(
         If pause_duration_s is not None, it's a pause chunk with empty text/tokens.
         Otherwise, it's a text chunk containing the original text.
     """
+    # SSML <break> -> [pause:Ns] so the rest of the pipeline can handle pauses
+    if "<break" in text.lower() or "<speak" in text.lower():
+        text = _ssml_to_pause_tags(text)
+        logger.info("Converted SSML <break> to [pause:Ns] in smart_split")
+        
     start_time = time.time()
     chunk_count = 0
     logger.info(f"Starting smart split for {len(text)} chars")
