@@ -138,7 +138,7 @@ async def stream_audio_chunks(
     writer: StreamingAudioWriter,
 ) -> AsyncGenerator[AudioChunk, None]:
     """Stream audio chunks as they're generated with client disconnect handling"""
-        voice_name = await process_and_validate_voices(request.voice, tts_service)
+    voice_name = await process_and_validate_voices(request.voice, tts_service)
 
     unique_properties = {"return_timestamps": False}
     if hasattr(request, "return_timestamps"):
