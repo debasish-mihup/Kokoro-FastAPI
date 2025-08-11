@@ -19,7 +19,40 @@ CUSTOM_PHONEMES = re.compile(r"(\[[^\[\]]*?\]\(\/[^\/\(\)]*?\/\))")
 # Pattern to find pause tags like [pause:0.5s]
 PAUSE_TAG_PATTERN = re.compile(r"\[pause:(\d+(?:\.\d+)?)s\]", re.IGNORECASE)
 
+_BREAK_STD_RE = re.compile(r'<\s*break\b[^>]*time\s*=\s*"([^"]+)"\s*/?>', re.I)
+_BREAK_WEIRD_RE = re.compile(r'<\s*break\b[^>]*(?:\bequals\b|\bslash\b)[^>]*>', re.I)
+_SPEAK_TAGS_RE = re.compile(r'</?\s*speak[^>]*>', re.I)
 
+def _ssml_to_pause_tags(text: str) -> str:
+    # normalize variant: <break time equals "800ms " slash >  ->  <break time="800ms"/>
+    def _fix_weird(m: re.Match) -> str:
+        inner = m.group(0)
+        inner = re.sub(r'(\btime)\s+equals\s+', r'\1=', inner, flags=re.I)
+        inner = re.sub(r'="([^"]*?)\s+"', r'="\1"', inner)
+        inner = re.sub(r'\s+slash\s*>', r'/>', inner, flags=re.I)
+        return inner
+
+    s = _BREAK_WEIRD_RE.sub(_fix_weird, text)
+
+    def _time_to_pause(m: re.Match) -> str:
+        v = m.group(1).strip().lower()
+        try:
+            if v.endswith("ms"):
+                sec = float(v[:-2]) / 1000.0
+            elif v.endswith("s"):
+                sec = float(v[:-1])
+            else:
+                sec = float(v)
+        except Exception:
+            sec = 0.0
+        if sec < 0: sec = 0.0
+        if sec > 10: sec = 10.0  # cap 10s
+        return f"[pause:{sec:g}s]"
+
+    s = _BREAK_STD_RE.sub(_time_to_pause, s)
+    s = _SPEAK_TAGS_RE.sub("", s)  # drop <speak> wrappers
+    return s
+    
 def process_text_chunk(
     text: str, language: str = "a", skip_phonemize: bool = False
 ) -> List[int]:
