@@ -22,7 +22,7 @@ from ..services.streaming_audio_writer import StreamingAudioWriter
 from ..services.tts_service import TTSService
 from ..structures import OpenAISpeechRequest
 from ..structures.schemas import CaptionedSpeechRequest
-
+from ..utils.ssml import is_ssml, to_pause_tags
 
 # Load OpenAI mappings
 def load_openai_mappings() -> Dict:
@@ -131,7 +131,6 @@ async def process_and_validate_voices(
 
     return "".join(voices)
 
-
 async def stream_audio_chunks(
     tts_service: TTSService,
     request: Union[OpenAISpeechRequest, CaptionedSpeechRequest],
@@ -139,37 +138,42 @@ async def stream_audio_chunks(
     writer: StreamingAudioWriter,
 ) -> AsyncGenerator[AudioChunk, None]:
     """Stream audio chunks as they're generated with client disconnect handling"""
-    voice_name = await process_and_validate_voices(request.voice, tts_service)
+        voice_name = await process_and_validate_voices(request.voice, tts_service)
+
     unique_properties = {"return_timestamps": False}
     if hasattr(request, "return_timestamps"):
         unique_properties["return_timestamps"] = request.return_timestamps
 
-    try:
-        async for chunk_data in tts_service.generate_audio_stream(
-            text=request.input,
-            voice=voice_name,
-            writer=writer,
-            speed=request.speed,
-            output_format=request.response_format,
-            lang_code=request.lang_code,
-            volume_multiplier=request.volume_multiplier,
-            normalization_options=request.normalization_options,
-            return_timestamps=unique_properties["return_timestamps"],
-        ):
-            # Check if client is still connected
-            is_disconnected = client_request.is_disconnected
-            if callable(is_disconnected):
-                is_disconnected = await is_disconnected()
-            if is_disconnected:
-                logger.info("Client disconnected, stopping audio generation")
-                break
+    # --- SSML <break> support (router-level) ---
+    input_text = request.input
 
-            yield chunk_data
-    except Exception as e:
-        logger.error(f"Error in audio streaming: {str(e)}")
-        # Let the exception propagate to trigger cleanup
-        raise
+    # normalize odd variant first (if any):
+    # <break time equals "800ms " slash >  ->  <break time="800ms"/>
+    input_text = re.sub(
+        r'<\s*break\b([^>]*)time\s+equals\s+"([^"]*?)"\s+slash\s*>',
+        r'<break \1time="\2"/>',
+        input_text,
+        flags=re.IGNORECASE,
+    )
 
+    # convert to engine-native [pause:Ns]
+    if is_ssml(input_text):
+        input_text = to_pause_tags(input_text)
+        logger.info("Router: converted SSML <break> to [pause:Ns]")
+
+    # call service with converted text
+    async for chunk_data in tts_service.generate_audio_stream(
+        text=input_text,
+        voice=voice_name,
+        writer=writer,
+        speed=request.speed,
+        output_format=request.response_format,
+        lang_code=request.lang_code,
+        normalization_options=request.normalization_options,
+        return_timestamps=unique_properties["return_timestamps"],
+        volume_multiplier=request.volume_multiplier if hasattr(request, "volume_multiplier") else 1.0,
+    ):
+        yield chunk_data
 
 @router.post("/audio/speech")
 async def create_speech(
