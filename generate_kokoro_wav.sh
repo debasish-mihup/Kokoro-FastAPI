@@ -12,21 +12,23 @@ fi
 # ---- Inputs ----
 INPUT_FILE="${1:-}"
 VOICE="${2:-}"
-SPEED_RAW="${3:-}"   # optional
+SPEED_RAW="${3:-}"         # optional (numeric, e.g., 0.95)
+OUTPUT_RAW="${4:-}"        # optional (filename/path)
 
 # ---- Validation ----
 if [[ -z "$INPUT_FILE" || ! -f "$INPUT_FILE" ]]; then
   echo "❌ Input file not found: $INPUT_FILE"
+  echo "   Usage: $0 <input.txt> <voice_name> [speed] [output.wav]"
   exit 1
 fi
 
 if [[ -z "$VOICE" ]]; then
   echo "❌ Voice not specified"
-  echo "   Usage: $0 <input.txt> <voice_name> [speed]"
+  echo "   Usage: $0 <input.txt> <voice_name> [speed] [output.wav]"
   exit 1
 fi
 
-# If speed provided, validate it's a number; otherwise omit from JSON (defaults to 1.0 server-side)
+# ---- Speed handling ----
 SPEED_FLAG=""
 if [[ -n "$SPEED_RAW" ]]; then
   if [[ "$SPEED_RAW" =~ ^[0-9]*\.?[0-9]+$ ]]; then
@@ -35,6 +37,24 @@ if [[ -n "$SPEED_RAW" ]]; then
     echo "⚠️  Ignoring invalid speed '$SPEED_RAW' (must be numeric like 0.95 or 1.0)."
   fi
 fi
+
+# ---- Output path ----
+if [[ -n "$OUTPUT_RAW" ]]; then
+  OUTPUT_FILE="$OUTPUT_RAW"
+else
+  base="${INPUT_FILE%.*}"
+  [[ -z "$base" ]] && base="$INPUT_FILE"
+  OUTPUT_FILE="${base}.wav"
+fi
+
+# Ensure .wav extension (if user passed a name without it)
+if [[ "${OUTPUT_FILE##*.}" != "wav" ]]; then
+  OUTPUT_FILE="${OUTPUT_FILE}.wav"
+fi
+
+# Create output directory if needed
+outdir="$(dirname "$OUTPUT_FILE")"
+mkdir -p "$outdir"
 
 # ---- Prepare payload ----
 TEXT="$(<"$INPUT_FILE")"
@@ -59,9 +79,7 @@ else
     '{input:$input, voice:$voice, model:$model, response_format:$fmt, stream:$stream}')
 fi
 
-# ---- Output path ----
-OUTPUT_FILE="${INPUT_FILE%.txt}.wav"
-
+# ---- Info ----
 echo "🎤 Generating narration:"
 echo "  File:   $INPUT_FILE"
 echo "  Voice:  $VOICE"
@@ -79,7 +97,6 @@ if [[ "$HTTP_CODE" != "200" ]]; then
   echo "❌ HTTP $HTTP_CODE"
   echo "🔁 Server response:"
   cat "$OUTPUT_FILE" || true
-  # Optionally remove tiny/invalid file
   exit 1
 fi
 
