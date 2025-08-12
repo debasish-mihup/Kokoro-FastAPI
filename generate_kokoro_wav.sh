@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Exit on error
-set -e
+set -euo pipefail
 
 # Check for dependencies
 if ! command -v jq &> /dev/null; then
@@ -9,45 +9,86 @@ if ! command -v jq &> /dev/null; then
   exit 1
 fi
 
-# Input arguments
-INPUT_FILE="$1"
-VOICE="$2"
+# ---- Inputs ----
+INPUT_FILE="${1:-}"
+VOICE="${2:-}"
+SPEED_RAW="${3:-}"   # optional
 
-# Validation
-if [ ! -f "$INPUT_FILE" ]; then
+# ---- Validation ----
+if [[ -z "$INPUT_FILE" || ! -f "$INPUT_FILE" ]]; then
   echo "❌ Input file not found: $INPUT_FILE"
   exit 1
 fi
 
-if [ -z "$VOICE" ]; then
+if [[ -z "$VOICE" ]]; then
   echo "❌ Voice not specified"
+  echo "   Usage: $0 <input.txt> <voice_name> [speed]"
   exit 1
 fi
 
-# Extract raw text and escape it for JSON
-TEXT=$(<"$INPUT_FILE")
-ESCAPED_TEXT=$(jq -Rn --arg text "$TEXT" '$text')
+# If speed provided, validate it's a number; otherwise omit from JSON (defaults to 1.0 server-side)
+SPEED_FLAG=""
+if [[ -n "$SPEED_RAW" ]]; then
+  if [[ "$SPEED_RAW" =~ ^[0-9]*\.?[0-9]+$ ]]; then
+    SPEED_FLAG="$SPEED_RAW"
+  else
+    echo "⚠️  Ignoring invalid speed '$SPEED_RAW' (must be numeric like 0.95 or 1.0)."
+  fi
+fi
 
-# Output path
+# ---- Prepare payload ----
+TEXT="$(<"$INPUT_FILE")"
+
+# Build valid JSON with jq (handles quotes in SSML safely)
+if [[ -n "$SPEED_FLAG" ]]; then
+  PAYLOAD=$(jq -n \
+    --arg input "$TEXT" \
+    --arg voice "$VOICE" \
+    --arg model "kokoro" \
+    --arg fmt "wav" \
+    --argjson stream false \
+    --argjson speed "$SPEED_FLAG" \
+    '{input:$input, voice:$voice, model:$model, response_format:$fmt, stream:$stream, speed:$speed}')
+else
+  PAYLOAD=$(jq -n \
+    --arg input "$TEXT" \
+    --arg voice "$VOICE" \
+    --arg model "kokoro" \
+    --arg fmt "wav" \
+    --argjson stream false \
+    '{input:$input, voice:$voice, model:$model, response_format:$fmt, stream:$stream}')
+fi
+
+# ---- Output path ----
 OUTPUT_FILE="${INPUT_FILE%.txt}.wav"
 
-# Send POST request to Kokoro TTS API
 echo "🎤 Generating narration:"
-echo "  File: $INPUT_FILE"
-echo "  Voice: $VOICE"
+echo "  File:   $INPUT_FILE"
+echo "  Voice:  $VOICE"
+echo "  Speed:  ${SPEED_FLAG:-default (1.0)}"
 echo "  Output: $OUTPUT_FILE"
 
-RESPONSE=$(curl -s -X POST http://localhost:8880/v1/audio/speech \
+# ---- POST to Kokoro ----
+HTTP_CODE=$(curl -sS -o "$OUTPUT_FILE" -w "%{http_code}" \
   -H "Content-Type: application/json" \
-  -d "{\"input\": $ESCAPED_TEXT, \"voice\": \"$VOICE\", \"model\": \"kokoro\", \"response_format\": \"wav\", \"stream\": false}" \
-  --output "$OUTPUT_FILE")
+  -X POST "http://localhost:8880/v1/audio/speech" \
+  -d "$PAYLOAD")
 
-# Validate result
-FILESIZE=$(stat -c%s "$OUTPUT_FILE")
-if [ "$FILESIZE" -lt 1000 ]; then
-  echo "❌ Output file is too small. Likely an error occurred."
-  echo "🔁 Response (might contain error info):"
-  echo "$RESPONSE"
-else
-  echo "✅ Narration saved to $OUTPUT_FILE"
+# ---- Validate result ----
+if [[ "$HTTP_CODE" != "200" ]]; then
+  echo "❌ HTTP $HTTP_CODE"
+  echo "🔁 Server response:"
+  cat "$OUTPUT_FILE" || true
+  # Optionally remove tiny/invalid file
+  exit 1
 fi
+
+FILESIZE=$(stat -c%s "$OUTPUT_FILE" 2>/dev/null || echo 0)
+if [[ "$FILESIZE" -lt 1000 ]]; then
+  echo "❌ Output file is too small ($FILESIZE bytes). Likely an error occurred."
+  echo "🔁 Server response (if any):"
+  cat "$OUTPUT_FILE" || true
+  exit 1
+fi
+
+echo "✅ Narration saved to $OUTPUT_FILE"
