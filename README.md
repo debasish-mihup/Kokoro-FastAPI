@@ -2,7 +2,8 @@
   <img src="githubbanner.png" alt="Kokoro TTS Banner">
 </p>
 
-# <sub><sub>_`FastKoko`_ </sub></sub>
+# <sub><sub>*`FastKoko`* </sub></sub>
+
 [![Tests](https://img.shields.io/badge/tests-69-darkgreen)]()
 [![Coverage](https://img.shields.io/badge/coverage-54%25-tan)]()
 [![Try on Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Try%20on-Spaces-blue)](https://huggingface.co/spaces/Remsky/Kokoro-TTS-Zero)
@@ -13,103 +14,119 @@
 [![Tested at Model Commit](https://img.shields.io/badge/last--tested--model--commit-1.0::9901c2b-blue)](https://huggingface.co/hexgrad/Kokoro-82M/commit/9901c2b79161b6e898b7ea857ae5298f47b8b0d6)
 
 Dockerized FastAPI wrapper for [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) text-to-speech model
-- Multi-language support (English, Japanese, Chinese, _Vietnamese soon_)
-- OpenAI-compatible Speech endpoint, NVIDIA GPU accelerated or CPU inference with PyTorch 
-- ONNX support coming soon, see v0.1.5 and earlier for legacy ONNX support in the interim
-- Debug endpoints for monitoring system stats, integrated web UI on localhost:8880/web
-- Phoneme-based audio generation, phoneme generation
-- Per-word timestamped caption generation
-- Voice mixing with weighted combinations
-- Added SSML break support while keeping pause option
+
+* Multi-language support (English, Japanese, Chinese, *Vietnamese soon*)
+* OpenAI-compatible Speech endpoint, NVIDIA GPU accelerated or CPU inference with PyTorch
+* ONNX support coming soon, see v0.1.5 and earlier for legacy ONNX support in the interim
+* Debug endpoints for monitoring system stats, integrated web UI on localhost:8880/web
+* Phoneme-based audio generation, phoneme generation
+* Per-word timestamped caption generation
+* Voice mixing with weighted combinations
+* **SSML support:** `<break />`, **`<prosody>`**, and **`<emphasis>`** (post-FX via ffmpeg). Pause tags like `[pause:Ns]` still work.
 
 ### Integration Guides
- [![Helm Chart](https://img.shields.io/badge/Helm%20Chart-black?style=flat&logo=helm&logoColor=white)](https://github.com/remsky/Kokoro-FastAPI/wiki/Setup-Kubernetes) [![DigitalOcean](https://img.shields.io/badge/DigitalOcean-black?style=flat&logo=digitalocean&logoColor=white)](https://github.com/remsky/Kokoro-FastAPI/wiki/Integrations-DigitalOcean) [![SillyTavern](https://img.shields.io/badge/SillyTavern-black?style=flat&color=red)](https://github.com/remsky/Kokoro-FastAPI/wiki/Integrations-SillyTavern)
-[![OpenWebUI](https://img.shields.io/badge/OpenWebUI-black?style=flat&color=white)](https://github.com/remsky/Kokoro-FastAPI/wiki/Integrations-OpenWebUi)
+
+[![Helm Chart](https://img.shields.io/badge/Helm%20Chart-black?style=flat\&logo=helm\&logoColor=white)](https://github.com/remsky/Kokoro-FastAPI/wiki/Setup-Kubernetes) [![DigitalOcean](https://img.shields.io/badge/DigitalOcean-black?style=flat\&logo=digitalocean\&logoColor=white)](https://github.com/remsky/Kokoro-FastAPI/wiki/Integrations-DigitalOcean) [![SillyTavern](https://img.shields.io/badge/SillyTavern-black?style=flat\&color=red)](https://github.com/remsky/Kokoro-FastAPI/wiki/Integrations-SillyTavern)
+[![OpenWebUI](https://img.shields.io/badge/OpenWebUI-black?style=flat\&color=white)](https://github.com/remsky/Kokoro-FastAPI/wiki/Integrations-OpenWebUi)
+
 ## Get Started
+
+> **Prereq for Prosody/Emphasis:** Install `ffmpeg` on the host/container. Without it, `<break>` still works, but `<prosody>`/`<emphasis>` will be ignored gracefully.
+>
+> ```bash
+> # Debian/Ubuntu
+> sudo apt-get update && sudo apt-get install -y ffmpeg
+> ```
 
 <details>
 <summary>Quickest Start (docker run)</summary>
 
-
 Pre built images are available to run, with arm/multi-arch support, and baked in models
-Refer to the core/config.py file for a full list of variables which can be managed via the environment
+Refer to the `core/config.py` file for a full list of variables which can be managed via the environment
 
 ```bash
 # the `latest` tag can be used, though it may have some unexpected bonus features which impact stability.
- Named versions should be pinned for your regular usage.
- Feedback/testing is always welcome
+# Named versions should be pinned for your regular usage. Feedback/testing is always welcome
 
 docker run -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-cpu:latest # CPU, or:
-docker run --gpus all -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-gpu:latest  #NVIDIA GPU
+docker run --gpus all -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-gpu:latest  # NVIDIA GPU
 ```
-
 
 </details>
 
 <details>
-
 <summary>Quick Start (docker compose) </summary>
 
 1. Install prerequisites, and start the service using Docker Compose (Full setup including UI):
-   - Install [Docker](https://www.docker.com/products/docker-desktop/)
-   - Clone the repository:
-        ```bash
-        git clone https://github.com/remsky/Kokoro-FastAPI.git
-        cd Kokoro-FastAPI
 
-        cd docker/gpu  # For GPU support
-        # or cd docker/cpu  # For CPU support
-        docker compose up --build
+   * Install [Docker](https://www.docker.com/products/docker-desktop/)
+   * Clone the repository:
 
-        # *Note for Apple Silicon (M1/M2) users:
-        # The current GPU build relies on CUDA, which is not supported on Apple Silicon.  
-        # If you are on an M1/M2/M3 Mac, please use the `docker/cpu` setup.  
-        # MPS (Apple's GPU acceleration) support is planned but not yet available.
+     ```bash
+     git clone https://github.com/remsky/Kokoro-FastAPI.git
+     cd Kokoro-FastAPI
 
-        # Models will auto-download, but if needed you can manually download:
-        python docker/scripts/download_model.py --output api/src/models/v1_0
+     cd docker/gpu  # For GPU support
+     # or cd docker/cpu  # For CPU support
+     docker compose up --build
 
-        # Or run directly via UV:
-        ./start-gpu.sh  # For GPU support
-        ./start-cpu.sh  # For CPU support
-        ```
+     # *Note for Apple Silicon (M1/M2) users:
+     # The current GPU build relies on CUDA, which is not supported on Apple Silicon.  
+     # If you are on an M1/M2/M3 Mac, please use the `docker/cpu` setup.  
+     # MPS (Apple's GPU acceleration) support is planned but not yet available.
+
+     # Models will auto-download, but if needed you can manually download:
+     python docker/scripts/download_model.py --output api/src/models/v1_0
+
+     # Or run directly via UV:
+     ./start-gpu.sh  # For GPU support
+     ./start-cpu.sh  # For CPU support
+     ```
+
 </details>
+
 <details>
 <summary>Direct Run (via uv) </summary>
 
-1. Install prerequisites ():
-   - Install [astral-uv](https://docs.astral.sh/uv/)
-   - Install [espeak-ng](https://github.com/espeak-ng/espeak-ng) in your system if you want it available as a fallback for unknown words/sounds. The upstream libraries may attempt to handle this, but results have varied.
-   - Clone the repository:
-        ```bash
-        git clone https://github.com/remsky/Kokoro-FastAPI.git
-        cd Kokoro-FastAPI
-        ```
-        
-        Run the [model download script](https://github.com/remsky/Kokoro-FastAPI/blob/master/docker/scripts/download_model.py) if you haven't already
-     
-        Start directly via UV (with hot-reload)
-        
-        Linux and macOS
-        ```bash
-        ./start-cpu.sh OR
-        ./start-gpu.sh 
-        ```
+1. Install prerequisites:
 
-        Windows
-        ```powershell
-        .\start-cpu.ps1 OR
-        .\start-gpu.ps1 
-        ```
+   * Install [astral-uv](https://docs.astral.sh/uv/)
+   * Install `ffmpeg` (required for `<prosody>`/`<emphasis>` support)
+   * Optional: Install [espeak-ng](https://github.com/espeak-ng/espeak-ng) for fallback handling of unknown sounds.
+   * Clone the repository:
+
+     ```bash
+     git clone https://github.com/remsky/Kokoro-FastAPI.git
+     cd Kokoro-FastAPI
+     ```
+
+     Run the [model download script](https://github.com/remsky/Kokoro-FastAPI/blob/master/docker/scripts/download_model.py) if you haven't already
+
+     Start directly via UV (with hot-reload)
+
+     **Linux and macOS**
+
+     ```bash
+     ./start-cpu.sh
+     # OR
+     ./start-gpu.sh
+     ```
+
+     **Windows**
+
+     ```powershell
+     .\start-cpu.ps1
+     # OR
+     .\start-gpu.ps1
+     ```
 
 </details>
 
 <details open>
 <summary> Up and Running? </summary>
 
-
 Run locally as an OpenAI-Compatible Speech Endpoint
-    
+
 ```python
 from openai import OpenAI
 
@@ -119,16 +136,15 @@ client = OpenAI(
 
 with client.audio.speech.with_streaming_response.create(
     model="kokoro",
-    voice="af_sky+af_bella", #single or multiple voicepack combo
+    voice="af_sky+af_bella", # single or multiple voicepack combo
     input="Hello world!"
   ) as response:
       response.stream_to_file("output.mp3")
 ```
-  
-- The API will be available at http://localhost:8880
-- API Documentation: http://localhost:8880/docs
 
-- Web Interface: http://localhost:8880/web
+* The API will be available at [http://localhost:8880](http://localhost:8880)
+* API Documentation: [http://localhost:8880/docs](http://localhost:8880/docs)
+* Web Interface: [http://localhost:8880/web](http://localhost:8880/web)
 
 <div align="center" style="display: flex; justify-content: center; gap: 10px;">
   <img src="assets/docs-screenshot.png" width="42%" alt="API Documentation" style="border: 2px solid #333; padding: 10px;">
@@ -137,7 +153,7 @@ with client.audio.speech.with_streaming_response.create(
 
 </details>
 
-## Features 
+## Features
 
 <details>
 <summary>OpenAI-Compatible Speech Endpoint</summary>
@@ -152,13 +168,13 @@ response = client.audio.speech.create(
     input="Hello world!",
     response_format="mp3"
 )
-
 response.stream_to_file("output.mp3")
 ```
+
 Or Via Requests:
+
 ```python
 import requests
-
 
 response = requests.get("http://localhost:8880/v1/audio/voices")
 voices = response.json()["voices"]
@@ -181,21 +197,24 @@ with open("output.mp3", "wb") as f:
 ```
 
 Quick tests (run from another terminal):
+
 ```bash
 python examples/assorted_checks/test_openai/test_openai_tts.py # Test OpenAI Compatibility
 python examples/assorted_checks/test_voices/test_all_voices.py # Test all available voices
 ```
+
 </details>
 
 <details>
 <summary>Voice Combination</summary>
 
-- Weighted voice combinations using ratios (e.g., "af_bella(2)+af_heart(1)" for 67%/33% mix)
-- Ratios are automatically normalized to sum to 100%
-- Available through any endpoint by adding weights in parentheses
-- Saves generated voicepacks for future use
+* Weighted voice combinations using ratios (e.g., `af_bella(2)+af_heart(1)` for 67%/33% mix)
+* Ratios are automatically normalized to sum to 100%
+* Available through any endpoint by adding weights in parentheses
+* Saves generated voicepacks for future use
 
 Combine voices and generate audio:
+
 ```python
 import requests
 response = requests.get("http://localhost:8880/v1/audio/voices")
@@ -240,8 +259,8 @@ response = requests.post(
         "response_format": "mp3"
     }
 )
-
 ```
+
 <p align="center">
   <img src="assets/voice_analysis.png" width="80%" alt="Voice Analysis Comparison" style="border: 2px solid #333; padding: 10px;">
 </p>
@@ -250,12 +269,12 @@ response = requests.post(
 <details>
 <summary>Multiple Output Audio Formats</summary>
 
-- mp3
-- wav
-- opus 
-- flac
-- m4a
-- pcm
+* mp3
+* wav
+* opus
+* flac
+* m4a
+* pcm
 
 <p align="center">
 <img src="assets/format_comparison.png" width="80%" alt="Audio Format Comparison" style="border: 2px solid #333; padding: 10px;">
@@ -269,8 +288,7 @@ response = requests.post(
 ```python
 # OpenAI-compatible streaming
 from openai import OpenAI
-client = OpenAI(
-    base_url="http://localhost:8880/v1", api_key="not-needed")
+client = OpenAI(base_url="http://localhost:8880/v1", api_key="not-needed")
 
 # Stream to file
 with client.audio.speech.with_streaming_response.create(
@@ -279,27 +297,10 @@ with client.audio.speech.with_streaming_response.create(
     input="Hello world!"
 ) as response:
     response.stream_to_file("output.mp3")
-
-# Stream to speakers (requires PyAudio)
-import pyaudio
-player = pyaudio.PyAudio().open(
-    format=pyaudio.paInt16, 
-    channels=1, 
-    rate=24000, 
-    output=True
-)
-
-with client.audio.speech.with_streaming_response.create(
-    model="kokoro",
-    voice="af_bella",
-    response_format="pcm",
-    input="Hello world!"
-) as response:
-    for chunk in response.iter_bytes(chunk_size=1024):
-        player.write(chunk)
 ```
 
 Or via requests:
+
 ```python
 import requests
 
@@ -325,26 +326,78 @@ for chunk in response.iter_content(chunk_size=1024):
 </p>
 
 Key Streaming Metrics:
-- First token latency @ chunksize
-    - ~300ms  (GPU) @ 400 
-    - ~3500ms (CPU) @ 200 (older i7)
-    - ~<1s    (CPU) @ 200 (M3 Pro)
-- Adjustable chunking settings for real-time playback 
+
+* First token latency @ chunksize
+
+  * \~300ms  (GPU) @ 400
+  * \~3500ms (CPU) @ 200 (older i7)
+  * \~<1s    (CPU) @ 200 (M3 Pro)
+* Adjustable chunking settings for real-time playback
 
 *Note: Artifacts in intonation can increase with smaller chunks*
+
 </details>
 
+---
+
+## NEW: SSML Prosody & Emphasis (Post-FX)
+
+This server now supports **`<prosody>`** (rate + pitch) and **`<emphasis>`** (reduced/moderate/strong) in addition to `<break>`.
+Implementation is a **post-processing shim**: text segments are synthesized normally, then **ffmpeg** applies tempo/pitch/gain on each segment, and silences are inserted for `<break>`.
+
+### Requirements
+
+* `ffmpeg` must be installed on the host/container.
+* No model change is required; this is applied after synthesis.
+
+### Mappings (defaults)
+
+* **`rate` → tempo**
+
+  * `"x-slow"=0.8`, `"slow"=0.9`, `"medium"=1.0`, `"fast"=1.1`, `"x-fast"=1.25`
+  * Percentages like `"85%"` → `0.85`
+* **`pitch` → cents**
+
+  * `"+2st"` = `+200c`, `"-1st"` = `-100c`; direct cents like `"+150c"` also supported
+* **`<emphasis>` → gain + tempo tweak**
+
+  * `reduced` = `-2 dB`, tempo `1.03`
+  * `moderate` = `+2 dB`, tempo `0.97`
+  * `strong` = `+4 dB`, tempo `0.94`
+
+*(You can tune these in `api/src/utils/ssml_fx.py`.)*
+
+### Quick Diagnostic (curl)
+
+Run this to hear all effects in one clip:
+
+```bash
+curl -sS -X POST http://localhost:8880/v1/audio/speech \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"kokoro","voice":"af_heart","input":"<speak>Diagnostic prosody test. This first sentence is baseline—no effects.<break time=\"300ms\"/><prosody rate=\"92%\" pitch=\"-2st\">Now I am slower and lower. You should hear my pace relax and my voice drop in pitch. Inside this slower section, <emphasis level=\"reduced\">reduced emphasis</emphasis> should sound a touch softer and slightly quicker than the surrounding slow speech.</prosody>This line returns to normal speed and pitch.<break time=\"250ms\"/><emphasis level=\"moderate\">Moderate emphasis begins here.</emphasis>Compared to baseline, that bit should be a little louder and a hair slower.<break time=\"200ms\"/><prosody rate=\"110%\" pitch=\"+2st\">Now I am faster and higher. You should hear a brighter tone and a snappier pace. <emphasis level=\"strong\">Strong emphasis</emphasis> inside this fast section should momentarily punch louder and slow down slightly.</prosody>We are back to normal again.<break time=\"500ms\"/>If everything worked: slow and low, then normal, then a modestly louder phrase, then fast and high with a strong punch, and finally back to neutral. Until our next delicious catastrophe—farewell!</speak>","response_format":"mp3","stream":false}' -o diag.mp3
+```
+
+### Usage Notes
+
+* Works with both **streaming** (containerized formats like mp3/ogg) and **non-streaming** (raw aggregation).
+* If `ffmpeg` is missing, prosody/emphasis are safely ignored; `<break>` still works.
+* Word-timing is approximate when tempo/pitch are modified post-synthesis.
+
+---
+
 ## Processing Details
+
 <details>
 <summary>Performance Benchmarks</summary>
 
-Benchmarking was performed on generation via the local API using text lengths up to feature-length books (~1.5 hours output), measuring processing time and realtime factor. Tests were run on: 
-- Windows 11 Home w/ WSL2 
-- NVIDIA 4060Ti 16gb GPU @ CUDA 12.1
-- 11th Gen i7-11700 @ 2.5GHz
-- 64gb RAM
-- WAV native output
-- H.G. Wells - The Time Machine (full text)
+Benchmarking was performed on generation via the local API using text lengths up to feature-length books (\~1.5 hours output), measuring processing time and realtime factor. Tests were run on:
+
+* Windows 11 Home w/ WSL2
+* NVIDIA 4060Ti 16gb GPU @ CUDA 12.1
+* 11th Gen i7-11700 @ 2.5GHz
+* 64gb RAM
+* WAV native output
+* H.G. Wells - The Time Machine (full text)
 
 <p align="center">
   <img src="assets/gpu_processing_time.png" width="45%" alt="Processing Time" style="border: 2px solid #333; padding: 10px; margin-right: 1%;">
@@ -352,9 +405,12 @@ Benchmarking was performed on generation via the local API using text lengths up
 </p>
 
 Key Performance Metrics:
-- Realtime Speed: Ranges between 35x-100x (generation time to output audio length)
-- Average Processing Rate: 137.67 tokens/second (cl100k_base)
+
+* Realtime Speed: Ranges between 35x-100x (generation time to output audio length)
+* Average Processing Rate: 137.67 tokens/second (cl100k\_base)
+
 </details>
+
 <details>
 <summary>GPU Vs. CPU</summary>
 
@@ -366,16 +422,17 @@ docker compose up --build
 # CPU: PyTorch CPU inference
 cd docker/cpu
 docker compose up --build
-
 ```
-*Note: Overall speed may have reduced somewhat with the structural changes to accommodate streaming. Looking into it* 
+
+*Note: Overall speed may have reduced somewhat with the structural changes to accommodate streaming. Looking into it.*
+
 </details>
 
 <details>
 <summary>Natural Boundary Detection</summary>
 
-- Automatically splits and stitches at sentence boundaries 
-- Helps to reduce artifacts and allow long form processing as the base model is only currently configured for approximately 30s output
+* Automatically splits and stitches at sentence boundaries
+* Helps to reduce artifacts and allow long form processing as the base model is only currently configured for approximately 30s output
 
 The model is capable of processing up to a 510 phonemized token chunk at a time, however, this can often lead to 'rushed' speech or other artifacts. An additional layer of chunking is applied in the server, that creates flexible chunks with a `TARGET_MIN_TOKENS` , `TARGET_MAX_TOKENS`, and `ABSOLUTE_MAX_TOKENS` which are configurable via environment variables, and set to 175, 250, 450 by default
 
@@ -385,6 +442,7 @@ The model is capable of processing up to a 510 phonemized token chunk at a time,
 <summary>Timestamped Captions & Phonemes</summary>
 
 Generate audio with word-level timestamps without streaming:
+
 ```python
 import requests
 import base64
@@ -404,20 +462,14 @@ response = requests.post(
 )
 
 with open("output.mp3","wb") as f:
-
     audio_json=json.loads(response.content)
-    
-    # Decode base 64 stream to bytes
     chunk_audio=base64.b64decode(audio_json["audio"].encode("utf-8"))
-    
-    # Process streaming chunks
     f.write(chunk_audio)
-    
-    # Print word level timestamps
     print(audio_json["timestamps"])
 ```
 
 Generate audio with word-level timestamps with streaming:
+
 ```python
 import requests
 import base64
@@ -440,27 +492,22 @@ f=open("output.mp3","wb")
 for chunk in response.iter_lines(decode_unicode=True):
     if chunk:
         chunk_json=json.loads(chunk)
-        
-        # Decode base 64 stream to bytes
         chunk_audio=base64.b64decode(chunk_json["audio"].encode("utf-8"))
-        
-        # Process streaming chunks
         f.write(chunk_audio)
-        
-        # Print word level timestamps
         print(chunk_json["timestamps"])
 ```
+
 </details>
 
 <details>
 <summary>Phoneme & Token Routes</summary>
 
 Convert text to phonemes and/or generate audio directly from phonemes:
+
 ```python
 import requests
 
 def get_phonemes(text: str, language: str = "a"):
-    """Get phonemes and tokens for input text"""
     response = requests.post(
         "http://localhost:8880/dev/phonemize",
         json={"text": text, "language": language}  # "a" for American English
@@ -470,7 +517,6 @@ def get_phonemes(text: str, language: str = "a"):
     return result["phonemes"], result["tokens"]
 
 def generate_audio_from_phonemes(phonemes: str, voice: str = "af_bella"):
-    """Generate audio from phonemes"""
     response = requests.post(
         "http://localhost:8880/dev/generate_from_phonemes",
         json={"phonemes": phonemes, "voice": voice},
@@ -484,12 +530,9 @@ def generate_audio_from_phonemes(phonemes: str, voice: str = "af_bella"):
 # Example usage
 text = "Hello world!"
 try:
-    # Convert text to phonemes
     phonemes, tokens = get_phonemes(text)
-    print(f"Phonemes: {phonemes}")  # e.g. ðɪs ɪz ˈoʊnli ɐ tˈɛst
-    print(f"Tokens: {tokens}")      # Token IDs including start/end tokens
-
-    # Generate and save audio
+    print(f"Phonemes: {phonemes}")
+    print(f"Tokens: {tokens}")
     if audio_bytes := generate_audio_from_phonemes(phonemes):
         with open("speech.wav", "wb") as f:
             f.write(audio_bytes)
@@ -499,6 +542,7 @@ except Exception as e:
 ```
 
 See `examples/phoneme_examples/generate_phonemes.py` for a sample script.
+
 </details>
 
 <details>
@@ -506,12 +550,13 @@ See `examples/phoneme_examples/generate_phonemes.py` for a sample script.
 
 Monitor system state and resource usage with these endpoints:
 
-- `/debug/threads` - Get thread information and stack traces
-- `/debug/storage` - Monitor temp file and output directory usage
-- `/debug/system` - Get system information (CPU, memory, GPU)
-- `/debug/session_pools` - View ONNX session and CUDA stream status
+* `/debug/threads` - Get thread information and stack traces
+* `/debug/storage` - Monitor temp file and output directory usage
+* `/debug/system` - Get system information (CPU, memory, GPU)
+* `/debug/session_pools` - View ONNX session and CUDA stream status
 
 Useful for debugging resource exhaustion or performance issues.
+
 </details>
 
 ## Known Issues & Troubleshooting
@@ -519,7 +564,8 @@ Useful for debugging resource exhaustion or performance issues.
 <details>
 <summary>Missing words & Missing some timestamps</summary>
 
-The api will automaticly do text normalization on input text which may incorrectly remove or change some phrases. This can be disabled by adding `"normalization_options":{"normalize": false}` to your request json:
+The API will automatically do text normalization on input text which may incorrectly remove or change some phrases. This can be disabled by adding `"normalization_options":{"normalize": false}` to your request JSON:
+
 ```python
 import requests
 
@@ -529,10 +575,7 @@ response = requests.post(
         "input": "Hello world!",
         "voice": "af_heart",
         "response_format": "pcm",
-        "normalization_options":
-        {
-            "normalize": False
-        }
+        "normalization_options": { "normalize": False }
     },
     stream=True
 )
@@ -542,40 +585,40 @@ for chunk in response.iter_content(chunk_size=1024):
         # Process streaming chunks
         pass
 ```
-  
+
 </details>
 
 <details>
 <summary>Versioning & Development</summary>
 
 **Branching Strategy:**
-*   **`release` branch:** Contains the latest stable build, recommended for production use. Docker images tagged with specific versions (e.g., `v0.3.0`) are built from this branch.
-*   **`master` branch:** Used for active development. It may contain experimental features, ongoing changes, or fixes not yet in a stable release. Use this branch if you want the absolute latest code, but be aware it might be less stable. The `latest` Docker tag often points to builds from this branch.
 
-Note: This is a *development* focused project at its core. 
+* **`release` branch:** Contains the latest stable build, recommended for production use. Docker images tagged with specific versions (e.g., `v0.3.0`) are built from this branch.
+* **`master` branch:** Used for active development. It may contain experimental features, ongoing changes, or fixes not yet in a stable release. Use this branch if you want the absolute latest code, but be aware it might be less stable. The `latest` Docker tag often points to builds from this branch.
+
+Note: This is a *development* focused project at its core.
 
 If you run into trouble, you may have to roll back a version on the release tags if something comes up, or build up from source and/or troubleshoot + submit a PR.
 
 Free and open source is a community effort, and there's only really so many hours in a day. If you'd like to support the work, feel free to open a PR, buy me a coffee, or report any bugs/features/etc you find during use.
 
   <a href="https://www.buymeacoffee.com/remsky" target="_blank">
-    <img 
-      src="https://cdn.buymeacoffee.com/buttons/v2/default-violet.png" 
-      alt="Buy Me A Coffee" 
+    <img
+      src="https://cdn.buymeacoffee.com/buttons/v2/default-violet.png"
+      alt="Buy Me A Coffee"
       style="height: 30px !important;width: 110px !important;"
     >
   </a>
-
-  
 </details>
 
 <details>
 <summary>Linux GPU Permissions</summary>
 
-Some Linux users may encounter GPU permission issues when running as non-root. 
+Some Linux users may encounter GPU permission issues when running as non-root.
 Can't guarantee anything, but here are some common solutions, consider your security requirements carefully
 
 ### Option 1: Container Groups (Likely the best option)
+
 ```yaml
 services:
   kokoro-tts:
@@ -586,6 +629,7 @@ services:
 ```
 
 ### Option 2: Host System Groups
+
 ```yaml
 services:
   kokoro-tts:
@@ -594,9 +638,11 @@ services:
     group_add:
       - "video"
 ```
+
 Note: May require adding host user to groups: `sudo usermod -aG docker,video $USER` and system restart.
 
 ### Option 3: Device Permissions (Use with caution)
+
 ```yaml
 services:
   kokoro-tts:
@@ -606,6 +652,7 @@ services:
       - /dev/nvidiactl:/dev/nvidiactl
       - /dev/nvidia-uvm:/dev/nvidia-uvm
 ```
+
 ⚠️ Warning: Reduces system security. Use only in development environments.
 
 Prerequisites: NVIDIA GPU, drivers, and container toolkit must be properly configured.
@@ -619,17 +666,20 @@ Visit [NVIDIA Container Toolkit installation](https://docs.nvidia.com/datacenter
 <details open>
 <summary>Model</summary>
 
-This API uses the [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) model from HuggingFace. 
+This API uses the [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) model from HuggingFace.
 
 Visit the model page for more details about training, architecture, and capabilities. I have no affiliation with any of their work, and produced this wrapper for ease of use and personal projects.
+
 </details>
+
 <details>
 <summary>License</summary>
 This project is licensed under the Apache License 2.0 - see below for details:
 
-- The Kokoro model weights are licensed under Apache 2.0 (see [model page](https://huggingface.co/hexgrad/Kokoro-82M))
-- The FastAPI wrapper code in this repository is licensed under Apache 2.0 to match
-- The inference code adapted from StyleTTS2 is MIT licensed
+* The Kokoro model weights are licensed under Apache 2.0 (see [model page](https://huggingface.co/hexgrad/Kokoro-82M))
+* The FastAPI wrapper code in this repository is licensed under Apache 2.0 to match
+* The inference code adapted from StyleTTS2 is MIT licensed
 
-The full Apache 2.0 license text can be found at: https://www.apache.org/licenses/LICENSE-2.0
+The full Apache 2.0 license text can be found at: [https://www.apache.org/licenses/LICENSE-2.0](https://www.apache.org/licenses/LICENSE-2.0)
+
 </details>
