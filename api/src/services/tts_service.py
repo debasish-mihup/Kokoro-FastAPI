@@ -263,46 +263,44 @@ class TTSService:
         voice_path: str,
         writer: "StreamingAudioWriter",
         speed: float,
-        output_format: str,
+        output_format: Optional[str],   # ← make this Optional
         pipeline_lang_code: str,
         volume_multiplier: Optional[float],
         normalization_options: Optional["NormalizationOptions"],
         return_timestamps: Optional[bool],
     ):
-        # local imports avoid circulars; use same package level as this file
+        # Local imports to avoid circulars
         from ..utils.ssml_fx import parse_segments
         from ..utils.audio_fx import apply_fx_np, gen_silence_np
-        segments = parse_segments(text)
-        normalizer = AudioNormalizer()
 
-        # last segment that actually emits audio/silence
+        normalizer = AudioNormalizer()
+        segments = parse_segments(text)
+
+        # Find last segment that actually emits audio or silence
         emit_idxs = [i for i, s in enumerate(segments) if (s.text is None) or (s.text and s.text.strip())]
         last_emit = emit_idxs[-1] if emit_idxs else -1
 
         for i, seg in enumerate(segments):
             is_last_seg = (i == last_emit)
 
+            # --- BREAK → silence ---
             if seg.text is None:
-                # break -> silence
                 silence = gen_silence_np(seg.break_ms / 1000.0, 24000)
                 pause_chunk = AudioChunk(audio=silence, word_timestamps=[])
-                formatted = await AudioService.convert_audio(
-                    pause_chunk,
-                    output_format,
-                    writer,
-                    speed=speed,
-                    chunk_text="",
-                    is_last_chunk=is_last_seg,
-                    trim_audio=False,
-                    normalizer=normalizer,
-                )
-                if formatted.output:
-                    yield formatted
-                elif len(pause_chunk.audio) > 0:
-                    yield pause_chunk
+                if output_format:
+                    formatted = await AudioService.convert_audio(
+                        pause_chunk, output_format, writer,
+                        speed=speed, chunk_text="", is_last_chunk=is_last_seg,
+                        trim_audio=False, normalizer=normalizer,
+                    )
+                    if formatted.output:
+                        yield formatted
+                else:
+                    if len(pause_chunk.audio) > 0:
+                        yield pause_chunk
                 continue
 
-            # Text: generate raw Kokoro chunks, apply FX, then encode
+            # --- TEXT → synth raw, apply FX, then encode (if needed) ---
             async for raw_chunk in self._process_chunk(
                 seg.text, [], voice_name, voice_path, speed, writer,
                 output_format=None, is_first=False, is_last=False,
@@ -320,35 +318,29 @@ class TTSService:
                     processed = raw_chunk.audio
 
                 fx_chunk = AudioChunk(audio=processed, word_timestamps=raw_chunk.word_timestamps)
-                formatted = await AudioService.convert_audio(
-                    fx_chunk,
-                    output_format,
-                    writer,
-                    speed=speed,
-                    chunk_text=seg.text,
-                    is_last_chunk=is_last_seg,
-                    trim_audio=True,
-                    normalizer=normalizer,
-                )
-                if formatted.output:
-                    yield formatted
+
+                if output_format:
+                    formatted = await AudioService.convert_audio(
+                        fx_chunk, output_format, writer,
+                        speed=speed, chunk_text=seg.text, is_last_chunk=is_last_seg,
+                        trim_audio=True, normalizer=normalizer,
+                    )
+                    if formatted.output:
+                        yield formatted
                 else:
                     yield fx_chunk
 
-        # Finalize containerized formats (mp3/ogg/etc.)
+        # Finalize containerized formats. In raw mode, emit an empty chunk to signal end.
         if output_format:
             empty = await AudioService.convert_audio(
                 AudioChunk(np.array([], dtype=np.float32)),
-                output_format,
-                writer,
-                speed=speed,
-                chunk_text="",
-                is_last_chunk=True,
-                trim_audio=True,
-                normalizer=normalizer,
+                output_format, writer, speed=speed, chunk_text="",
+                is_last_chunk=True, trim_audio=True, normalizer=normalizer,
             )
             if empty.output:
                 yield empty
+        else:
+            yield AudioChunk(np.array([], dtype=np.int16), output=b"")
     
     async def generate_audio_stream(
         self,
