@@ -16,8 +16,8 @@ RUN apt-get update -y &&  \
 USER appuser
 WORKDIR /app
 
-ENV UV_HTTP_TIMEOUT=600
-ENV PIP_DEFAULT_TIMEOUT=600
+ENV UV_HTTP_TIMEOUT=3600
+ENV PIP_DEFAULT_TIMEOUT=3600
 
 # Copy dependency files
 COPY --chown=appuser:appuser pyproject.toml ./pyproject.toml
