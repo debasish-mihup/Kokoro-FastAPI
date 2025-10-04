@@ -60,6 +60,7 @@ class TTSService:
         normalizer: Optional[AudioNormalizer] = None,
         lang_code: Optional[str] = None,
         return_timestamps: Optional[bool] = False,
+        sample_rate: int = 24000,
     ) -> AsyncGenerator[AudioChunk, None]:
         """Process tokens into audio."""
         async with self._chunk_semaphore:
@@ -310,6 +311,7 @@ class TTSService:
                 normalizer=normalizer,
                 lang_code=pipeline_lang_code,
                 return_timestamps=return_timestamps,
+                sample_rate=sample_rate,
             ):
                 try:
                     processed = apply_fx_np(
@@ -449,6 +451,7 @@ class TTSService:
                             normalizer=stream_normalizer,
                             lang_code=pipeline_lang_code,  # Pass lang_code
                             return_timestamps=return_timestamps,
+                            sample_rate=sample_rate,
                         ):
                             if chunk_data.word_timestamps is not None:
                                 for timestamp in chunk_data.word_timestamps:
@@ -495,6 +498,7 @@ class TTSService:
                         volume_multiplier=volume_multiplier,
                         normalizer=stream_normalizer,
                         lang_code=pipeline_lang_code,  # Pass lang_code
+                        sample_rate=sample_rate,
                     ):
                         if chunk_data.output is not None:
                             yield chunk_data
