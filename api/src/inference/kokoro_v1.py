@@ -188,6 +188,7 @@ class KokoroV1(BaseModelBackend):
         text: str,
         voice: Union[str, Tuple[str, Union[torch.Tensor, str]]],
         speed: float = 1.0,
+        sample_rate: int = 24000,
         lang_code: Optional[str] = None,
         return_timestamps: Optional[bool] = False,
     ) -> AsyncGenerator[AudioChunk, None]:
