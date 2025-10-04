@@ -101,6 +101,7 @@ class TTSService:
                         speed=speed,
                         lang_code=lang_code,
                         return_timestamps=return_timestamps,
+                        sample_rate=sample_rate,
                     ):
                         chunk_data.audio*=volume_multiplier
                         # For streaming, convert to bytes
