@@ -52,7 +52,7 @@ class StreamingAudioWriter:
                 )
                 # Set bit_rate only for codecs where it's applicable and useful
                 if self.format in ['mp3', 'aac', 'opus']:
-                    self.stream.bit_rate = 128000
+                    self.stream.bit_rate = 160000
         else:
             raise ValueError(f"Unsupported format: {self.format}") # Use self.format here
 
