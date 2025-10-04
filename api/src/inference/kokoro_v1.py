@@ -188,9 +188,9 @@ class KokoroV1(BaseModelBackend):
         text: str,
         voice: Union[str, Tuple[str, Union[torch.Tensor, str]]],
         speed: float = 1.0,
-        sample_rate: int = 24000,
         lang_code: Optional[str] = None,
         return_timestamps: Optional[bool] = False,
+        sample_rate: int = 24000,
     ) -> AsyncGenerator[AudioChunk, None]:
         """Generate audio using model.
 
@@ -330,7 +330,7 @@ class KokoroV1(BaseModelBackend):
                 and "out of memory" in str(e).lower()
             ):
                 self._clear_memory()
-                async for chunk in self.generate(text, voice, speed, lang_code):
+                async for chunk in self.generate(text, voice, speed, lang_code, sample_rate):
                     yield chunk
             raise
 
