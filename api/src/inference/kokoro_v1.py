@@ -311,9 +311,13 @@ class KokoroV1(BaseModelBackend):
                                 logger.error(
                                     f"Failed to process timestamps for chunk: {e}"
                                 )
-
+                    # Resample if necessary
+                    audio_tensor = result.audio
+                    if sample_rate != 24000:
+                        logger.debug(f"Need to resample audio. Target sample rate: {sample_rate}")
+                        audio_tensor = resample_audio(audio_tensor, orig_rate=24000, target_rate=sample_rate)
                     yield AudioChunk(
-                        result.audio.numpy(), word_timestamps=word_timestamps
+                        audio_tensor.numpy(), word_timestamps=word_timestamps
                     )
                 else:
                     logger.warning("No audio in chunk")
