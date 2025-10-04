@@ -13,7 +13,7 @@ from ..core.config import settings
 from ..core.model_config import model_config
 from ..structures.schemas import WordTimestamp
 from .base import AudioChunk, BaseModelBackend
-
+from ..utils.audio_utils import resample_audio
 
 class KokoroV1(BaseModelBackend):
     """Kokoro backend with controlled resource management."""
