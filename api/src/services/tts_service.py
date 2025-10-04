@@ -511,6 +511,7 @@ class TTSService:
         volume_multiplier: Optional[float] = 1.0,
         normalization_options: Optional[NormalizationOptions] = NormalizationOptions(),
         lang_code: Optional[str] = None,
+        sample_rate: int = 24000,
     ) -> AudioChunk:
         """Generate complete audio for text using streaming internally."""
         audio_data_chunks = []
@@ -526,6 +527,7 @@ class TTSService:
                 return_timestamps=return_timestamps,
                 lang_code=lang_code,
                 output_format=None,
+                sample_rate=sample_rate,
             ):
                 if len(audio_stream_data.audio) > 0:
                     audio_data_chunks.append(audio_stream_data)
