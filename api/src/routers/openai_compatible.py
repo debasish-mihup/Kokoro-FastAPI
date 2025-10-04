@@ -155,6 +155,7 @@ async def stream_audio_chunks(
             volume_multiplier=request.volume_multiplier,
             normalization_options=request.normalization_options,
             return_timestamps=unique_properties["return_timestamps"],
+            sample_rate=request.sample_rate,
         ):
             # Check if client is still connected
             is_disconnected = client_request.is_disconnected
@@ -204,7 +205,7 @@ async def create_speech(
             "pcm": "audio/pcm",
         }.get(request.response_format, f"audio/{request.response_format}")
 
-        writer = StreamingAudioWriter(request.response_format, sample_rate=24000)
+        writer = StreamingAudioWriter(request.response_format, sample_rate=request.sample_rate)
 
         # Check if streaming is requested (default for OpenAI client)
         if request.stream:
@@ -304,6 +305,7 @@ async def create_speech(
                 volume_multiplier=request.volume_multiplier,
                 normalization_options=request.normalization_options,
                 lang_code=request.lang_code,
+                sample_rate=request.sample_rate,
             )
 
             audio_data = await AudioService.convert_audio(
