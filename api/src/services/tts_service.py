@@ -268,6 +268,7 @@ class TTSService:
         volume_multiplier: Optional[float],
         normalization_options: Optional["NormalizationOptions"],
         return_timestamps: Optional[bool],
+        sample_rate: int,
     ):
         # Local imports to avoid circulars
         from ..utils.ssml_fx import parse_segments
@@ -285,7 +286,7 @@ class TTSService:
 
             # --- BREAK → silence ---
             if seg.text is None:
-                silence = gen_silence_np(seg.break_ms / 1000.0, 24000)
+                silence = gen_silence_np(seg.break_ms / 1000.0, sample_rate)
                 pause_chunk = AudioChunk(audio=silence, word_timestamps=[])
                 if output_format:
                     formatted = await AudioService.convert_audio(
@@ -311,7 +312,7 @@ class TTSService:
             ):
                 try:
                     processed = apply_fx_np(
-                        raw_chunk.audio, 24000,
+                        raw_chunk.audio, sample_rate,
                         tempo=seg.tempo, pitch_cents=seg.pitch_cents, gain_db=seg.gain_db
                     )
                 except Exception:
@@ -353,6 +354,7 @@ class TTSService:
         volume_multiplier: Optional[float] = 1.0,
         normalization_options: Optional[NormalizationOptions] = NormalizationOptions(),
         return_timestamps: Optional[bool] = False,
+        sample_rate: int = 24000,
     ) -> AsyncGenerator[AudioChunk, None]:
         """Generate and stream audio chunks."""
         stream_normalizer = AudioNormalizer()
@@ -385,6 +387,7 @@ class TTSService:
                     volume_multiplier=volume_multiplier,
                     normalization_options=normalization_options,
                     return_timestamps=return_timestamps,
+                    sample_rate=sample_rate,
                 ):
                     yield c
                 return
@@ -399,7 +402,7 @@ class TTSService:
                     # --- Handle Pause Chunk ---
                     try:
                         logger.debug(f"Generating {pause_duration_s}s silence chunk")
-                        silence_samples = int(pause_duration_s * 24000)  # 24kHz sample rate
+                        silence_samples = int(pause_duration_s * sample_rate)  # 24kHz sample rate
                         # Create proper silence as int16 zeros to avoid normalization artifacts
                         silence_audio = np.zeros(silence_samples, dtype=np.int16)
                         pause_chunk = AudioChunk(audio=silence_audio, word_timestamps=[])  # Empty timestamps for silence
@@ -454,7 +457,7 @@ class TTSService:
                             # Update offset based on the actual duration of the generated audio chunk
                             chunk_duration = 0
                             if chunk_data.audio is not None and len(chunk_data.audio) > 0:
-                                chunk_duration = len(chunk_data.audio) / 24000
+                                chunk_duration = len(chunk_data.audio) / sample_rate
                                 current_offset += chunk_duration
 
                             # Yield the processed chunk (either formatted or raw)
