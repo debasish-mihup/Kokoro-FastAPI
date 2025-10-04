@@ -43,7 +43,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-gpu = ["torch==2.8.0+cu129"]
+gpu = ["torch==2.8.0"]
 cpu = ["torch==2.8.0"]
 test = [
     "pytest==8.3.5",
@@ -70,19 +70,6 @@ explicit = true
 
 [[tool.uv.index]]
 name = "pytorch-cuda"
-url = "https://download.pytorch.org/whl/cu129"
+url = "https://download.pytorch.org/whl/cu128"
 explicit = true
 
-[build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
-
-[tool.setuptools]
-package-dir = { "" = "api/src" }
-packages.find = { where = ["api/src"], namespaces = true }
-
-[tool.pytest.ini_options]
-testpaths = ["api/tests", "ui/tests"]
-python_files = ["test_*.py"]
-addopts = "--cov=api --cov=ui --cov-report=term-missing --cov-config=.coveragerc --full-trace"
-asyncio_mode = "auto"
