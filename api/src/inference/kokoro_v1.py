@@ -7,7 +7,7 @@ import numpy as np
 import torch
 from kokoro import KModel, KPipeline
 from loguru import logger
-
+import re
 from ..core import paths
 from ..core.config import settings
 from ..core.model_config import model_config
@@ -214,6 +214,7 @@ class KokoroV1(BaseModelBackend):
                 if self._check_memory():
                     self._clear_memory()
 
+            text = re.sub("mercedes", "Mursaydees", text, flags=re.IGNORECASE)
             # Handle voice input
             voice_path: str
             voice_name: str
