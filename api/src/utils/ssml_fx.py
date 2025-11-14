@@ -28,13 +28,16 @@ def _rate_to_tempo(rate: str) -> float:
     try: return float(rate)
     except: return 1.0
 
-def _pitch_to_cents(pitch: str) -> int:
+def _pitch_to_cents(pitch: str, scale: float = 0.25) -> int:
+    """
+    scale: Multiplier for pitch changes (0.5 = half as aggressive, 0.25 = quarter)
+    """
     pitch = pitch.strip().lower()
-    m = re.match(r'^([+-]?\d+)\s*st$', pitch)   # semitones
-    if m: return int(m.group(1))*100
-    m = re.match(r'^([+-]?\d+)\s*c$', pitch)    # cents
-    if m: return int(m.group(1))
-    try: return int(float(pitch)*100.0)
+    m = re.match(r'^([+-]?\d+)\s*st$', pitch)
+    if m: return int(int(m.group(1)) * 100 * scale)
+    m = re.match(r'^([+-]?\d+)\s*c$', pitch)
+    if m: return int(int(m.group(1)) * scale)
+    try: return int(float(pitch) * 100.0 * scale)
     except: return 0
 
 def _emphasis_fx(level: str) -> tuple[float, float]:
