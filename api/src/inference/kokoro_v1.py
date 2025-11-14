@@ -15,6 +15,127 @@ from ..structures.schemas import WordTimestamp
 from .base import AudioChunk, BaseModelBackend
 from ..utils.audio_utils import resample_audio
 
+import re
+from xml.etree import ElementTree as ET
+
+# Define supported tags
+SUPPORTED_TAGS = {'speak', 'break', 'prosody', 'emphasis'}
+
+def strip_unsupported_ssml(ssml_text: str) -> str:
+    """
+    Remove unsupported SSML tags from input text while preserving supported ones.
+    Supported tags: speak, break, prosody, emphasis
+    
+    Args:
+        ssml_text: SSML text that may contain unsupported tags
+        
+    Returns:
+        Cleaned SSML text with only supported tags
+    """
+    # If no XML-like tags, return as-is
+    if not re.search(r'<[^>]+>', ssml_text):
+        return ssml_text
+    
+    try:
+        # Parse the SSML
+        root = ET.fromstring(ssml_text)
+        
+        # Clean the tree recursively
+        _clean_tree(root)
+        
+        # Convert back to string
+        result = ET.tostring(root, encoding='unicode', method='xml')
+        
+        # Remove XML declaration if present
+        result = re.sub(r'<\?xml[^>]+\?>\s*', '', result)
+        
+        return result
+        
+    except ET.ParseError:
+        # If parsing fails, fall back to regex-based cleaning
+        return _regex_strip_unsupported(ssml_text)
+
+
+def _clean_tree(node: ET.Element) -> None:
+    """
+    Recursively remove unsupported tags from ElementTree.
+    Unsupported tags are replaced by their content.
+    """
+    tag = re.sub(r'^{.*}', '', node.tag).lower()
+    
+    # Process children first (depth-first)
+    for child in list(node):
+        _clean_tree(child)
+    
+    # Replace unsupported tags with their content
+    children_to_remove = []
+    for i, child in enumerate(list(node)):
+        child_tag = re.sub(r'^{.*}', '', child.tag).lower()
+        
+        if child_tag not in SUPPORTED_TAGS:
+            # Move child's text to parent
+            if child.text:
+                if i == 0:
+                    # First child: prepend to parent's text
+                    node.text = (node.text or '') + child.text
+                else:
+                    # Other children: append to previous sibling's tail
+                    prev = list(node)[i-1]
+                    prev.tail = (prev.tail or '') + child.text
+            
+            # Move child's children up to parent level
+            insert_pos = i
+            for grandchild in list(child):
+                node.insert(insert_pos, grandchild)
+                insert_pos += 1
+            
+            # Move child's tail to last grandchild or previous sibling
+            if child.tail:
+                if len(child) > 0:
+                    # Has children: append to last child's tail
+                    list(child)[-1].tail = (list(child)[-1].tail or '') + child.tail
+                elif i == 0:
+                    # First child with no children: append to parent's text
+                    node.text = (node.text or '') + child.tail
+                else:
+                    # Other children with no children: append to previous sibling's tail
+                    prev = list(node)[i-1]
+                    prev.tail = (prev.tail or '') + child.tail
+            
+            children_to_remove.append(child)
+    
+    # Remove unsupported children
+    for child in children_to_remove:
+        node.remove(child)
+
+
+def _regex_strip_unsupported(text: str) -> str:
+    """
+    Fallback regex-based method to strip unsupported tags.
+    Less accurate but handles malformed XML.
+    """
+    # Pattern to match any XML tag
+    tag_pattern = r'<\s*(/?)([a-zA-Z][a-zA-Z0-9_-]*)\b([^>]*)>'
+    
+    def replace_tag(match):
+        is_closing = match.group(1)
+        tag_name = match.group(2).lower()
+        attributes = match.group(3)
+        
+        # Keep supported tags
+        if tag_name in SUPPORTED_TAGS:
+            return match.group(0)
+        
+        # Remove unsupported tags (both opening and closing)
+        return ''
+    
+    result = re.sub(tag_pattern, replace_tag, text)
+    
+    # Clean up any double spaces created by tag removal
+    result = re.sub(r'\s+', ' ', result)
+    
+    return result.strip()
+
 class KokoroV1(BaseModelBackend):
     """Kokoro backend with controlled resource management."""
 
@@ -213,7 +334,7 @@ class KokoroV1(BaseModelBackend):
             if self._device == "cuda":
                 if self._check_memory():
                     self._clear_memory()
-
+            text = strip_unsupported_ssml(text)
             text = re.sub("mercedes", "Mursaydees", text, flags=re.IGNORECASE)
             # Handle voice input
             voice_path: str
