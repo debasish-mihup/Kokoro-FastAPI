@@ -23,14 +23,14 @@ SUPPORTED_TAGS = {'speak', 'break', 'prosody', 'emphasis'}
 
 def strip_unsupported_ssml(ssml_text: str) -> str:
     """
-    Remove unsupported SSML tags from input text while preserving supported ones.
+    Remove unsupported SSML tags AND their content from input text while preserving supported ones.
     Supported tags: speak, break, prosody, emphasis
     
     Args:
         ssml_text: SSML text that may contain unsupported tags
         
     Returns:
-        Cleaned SSML text with only supported tags
+        Cleaned SSML text with only supported tags (unsupported tag content removed)
     """
     # If no XML-like tags, return as-is
     if not re.search(r'<[^>]+>', ssml_text):
@@ -58,80 +58,82 @@ def strip_unsupported_ssml(ssml_text: str) -> str:
 
 def _clean_tree(node: ET.Element) -> None:
     """
-    Recursively remove unsupported tags from ElementTree.
-    Unsupported tags are replaced by their content.
+    Recursively remove unsupported tags AND their content from ElementTree.
     """
     tag = re.sub(r'^{.*}', '', node.tag).lower()
     
     # Process children first (depth-first)
-    for child in list(node):
-        _clean_tree(child)
-    
-    # Replace unsupported tags with their content
     children_to_remove = []
-    for i, child in enumerate(list(node)):
+    for child in list(node):
         child_tag = re.sub(r'^{.*}', '', child.tag).lower()
         
         if child_tag not in SUPPORTED_TAGS:
-            # Move child's text to parent
-            if child.text:
-                if i == 0:
-                    # First child: prepend to parent's text
-                    node.text = (node.text or '') + child.text
-                else:
-                    # Other children: append to previous sibling's tail
-                    prev = list(node)[i-1]
-                    prev.tail = (prev.tail or '') + child.text
-            
-            # Move child's children up to parent level
-            insert_pos = i
-            for grandchild in list(child):
-                node.insert(insert_pos, grandchild)
-                insert_pos += 1
-            
-            # Move child's tail to last grandchild or previous sibling
-            if child.tail:
-                if len(child) > 0:
-                    # Has children: append to last child's tail
-                    list(child)[-1].tail = (list(child)[-1].tail or '') + child.tail
-                elif i == 0:
-                    # First child with no children: append to parent's text
-                    node.text = (node.text or '') + child.tail
-                else:
-                    # Other children with no children: append to previous sibling's tail
-                    prev = list(node)[i-1]
-                    prev.tail = (prev.tail or '') + child.tail
-            
+            # Mark unsupported child for removal (including all its content)
             children_to_remove.append(child)
+        else:
+            # Recursively clean supported children
+            _clean_tree(child)
     
-    # Remove unsupported children
+    # Remove unsupported children (this removes the tag AND all its content)
     for child in children_to_remove:
+        # Preserve the tail text (text after the closing tag)
+        tail_text = child.tail
         node.remove(child)
+        
+        # Append tail to previous sibling or parent text
+        if tail_text:
+            children = list(node)
+            if len(children) > 0:
+                # Append to last child's tail
+                if children[-1].tail:
+                    children[-1].tail += tail_text
+                else:
+                    children[-1].tail = tail_text
+            else:
+                # Append to parent's text
+                if node.text:
+                    node.text += tail_text
+                else:
+                    node.text = tail_text
 
 
 def _regex_strip_unsupported(text: str) -> str:
     """
-    Fallback regex-based method to strip unsupported tags.
+    Fallback regex-based method to strip unsupported tags AND their content.
     Less accurate but handles malformed XML.
     """
-    # Pattern to match any XML tag
-    tag_pattern = r'<\s*(/?)([a-zA-Z][a-zA-Z0-9_-]*)\b([^>]*)>'
+    # Pattern to match opening and closing tags with content
+    # This will match: <tag>content</tag> or <tag attr="val">content</tag>
+    tag_pattern = r'<\s*([a-zA-Z][a-zA-Z0-9_-]*)\b[^>]*>.*?</\s*\1\s*>|<\s*([a-zA-Z][a-zA-Z0-9_-]*)\b[^/>]*/>'
+    
+    def is_supported_tag(tag_name: str) -> bool:
+        return tag_name.lower() in SUPPORTED_TAGS
     
     def replace_tag(match):
-        is_closing = match.group(1)
+        full_match = match.group(0)
+        # Extract tag name from opening tag
+        tag_match = re.match(r'<\s*([a-zA-Z][a-zA-Z0-9_-]*)', full_match)
+        if tag_match:
+            tag_name = tag_match.group(1).lower()
+            if is_supported_tag(tag_name):
+                return full_match  # Keep supported tags
+        return ''  # Remove unsupported tags and their content
+    
+    # First pass: remove unsupported tags with content
+    result = re.sub(tag_pattern, replace_tag, text, flags=re.DOTALL)
+    
+    # Second pass: clean up any remaining unsupported self-closing or empty tags
+    simple_tag_pattern = r'<\s*(/?)([a-zA-Z][a-zA-Z0-9_-]*)\b([^>]*)>'
+    
+    def replace_simple_tag(match):
         tag_name = match.group(2).lower()
-        attributes = match.group(3)
-        
-        # Keep supported tags
         if tag_name in SUPPORTED_TAGS:
             return match.group(0)
-        
-        # Remove unsupported tags (both opening and closing)
         return ''
     
-    result = re.sub(tag_pattern, replace_tag, text)
+    result = re.sub(simple_tag_pattern, replace_simple_tag, result)
     
-    # Clean up any double spaces created by tag removal
+    # Clean up any extra whitespace
     result = re.sub(r'\s+', ' ', result)
     
     return result.strip()
