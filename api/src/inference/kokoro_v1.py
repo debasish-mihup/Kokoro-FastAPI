@@ -336,8 +336,9 @@ class KokoroV1(BaseModelBackend):
             if self._device == "cuda":
                 if self._check_memory():
                     self._clear_memory()
+            print("org:", text)
             text = strip_unsupported_ssml(text)
-            print("processed text: ", text)
+            print("mod:", text)
             text = re.sub("mercedes", "Mursaydees", text, flags=re.IGNORECASE)
             # Handle voice input
             voice_path: str
