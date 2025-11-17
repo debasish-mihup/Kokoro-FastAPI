@@ -1,7 +1,3 @@
-ORG::
-
-
-
 """Audio conversion service with proper streaming support"""
 
 import struct
