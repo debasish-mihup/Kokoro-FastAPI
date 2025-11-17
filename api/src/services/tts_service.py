@@ -22,7 +22,7 @@ from ..utils.ssml_fx import has_prosody_or_emphasis
 from .audio import AudioNormalizer, AudioService
 from .streaming_audio_writer import StreamingAudioWriter
 from .text_processing import tokenize
-from .text_processing.text_processor import process_text_chunk, smart_split
+from .text_processing.text_processor import process_text_chunk, smart_split, strip_unsupported_ssml
 
 
 class TTSService:
@@ -376,7 +376,9 @@ class TTSService:
             logger.info(
                 f"Using lang_code '{pipeline_lang_code}' for voice '{voice_name}' in audio stream"
             )
-
+            print("org:", text)
+            text = strip_unsupported_ssml(text)
+            print("mod:", text)
             # If SSML contains <prosody> or <emphasis>, switch to FX path
             if has_prosody_or_emphasis(text):
                 async for c in self._generate_audio_stream_with_ssml_fx(
