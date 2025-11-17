@@ -395,7 +395,6 @@ class TTSService:
                     yield c
                 return
 
-            print("generate_audio_stream: ", text)
             # Process text in chunks with smart splitting, handling pause tags
             async for chunk_text, tokens, pause_duration_s in smart_split(
                 text,
