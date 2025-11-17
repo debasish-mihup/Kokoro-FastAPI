@@ -75,6 +75,11 @@ class StreamingAudioWriter:
 
         if finalize:
             if self.format != "pcm":
+                # Defensive check: if buffer is already closed, return empty bytes
+                if not hasattr(self, "output_buffer") or self.output_buffer.closed:
+                    logger.warning("Buffer already closed during finalization, returning empty data")
+                    return b""
+                
                 # Get the buffer data FIRST, before any operations that might close it
                 data = self.output_buffer.getvalue()
                 
@@ -86,10 +91,13 @@ class StreamingAudioWriter:
                     
                     logger.debug("Muxed final packets.")
                     
-                    # If flush succeeded, get any additional data that was written
-                    additional_data = self.output_buffer.getvalue()[len(data):]
-                    if additional_data:
-                        data += additional_data
+                    # If flush succeeded AND buffer is still open, get any additional data
+                    if not self.output_buffer.closed:
+                        additional_data = self.output_buffer.getvalue()[len(data):]
+                        if additional_data:
+                            data += additional_data
+                    else:
+                        logger.debug("Buffer closed after muxing, using data captured before flush")
                 except Exception as e:
                     # If encoding None fails (EOF error), the buffer might be closed
                     # but we already have the data from before the flush attempt
@@ -116,6 +124,11 @@ class StreamingAudioWriter:
             # Write raw bytes
             return audio_data.tobytes()
         else:
+            # Defensive check: if buffer is closed, we can't write more data
+            if not hasattr(self, "output_buffer") or self.output_buffer.closed:
+                logger.error("Buffer is closed, cannot write audio data")
+                return b""
+            
             frame = av.AudioFrame.from_ndarray(
                 audio_data.reshape(1, -1),
                 format="s16",
@@ -130,6 +143,11 @@ class StreamingAudioWriter:
             for packet in packets:
                 self.container.mux(packet)
 
+            # Check if buffer is still open after muxing
+            if self.output_buffer.closed:
+                logger.error("Buffer was closed after muxing packet")
+                return b""
+            
             data = self.output_buffer.getvalue()
             self.output_buffer.seek(0)
             self.output_buffer.truncate(0)
