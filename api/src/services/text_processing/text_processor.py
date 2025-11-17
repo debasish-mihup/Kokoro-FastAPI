@@ -366,80 +366,82 @@ async def smart_split(
 # Define supported tags
 SUPPORTED_TAGS = {'speak', 'break', 'prosody', 'emphasis'}
 
+
 def strip_unsupported_ssml(ssml_text: str) -> str:
     """
     Remove unsupported SSML tags AND their content from input text while preserving supported ones.
     Supported tags: speak, break, prosody, emphasis
-    
+
     Args:
         ssml_text: SSML text that may contain unsupported tags
-        
+
     Returns:
         Cleaned SSML text with only supported tags (unsupported tag content removed)
     """
     # If no XML-like tags, return as-is
     if not re.search(r'<[^>]+>', ssml_text):
         return ssml_text
-    
+
     try:
         # Parse the SSML
         root = ET.fromstring(ssml_text)
-        
+
         # Clean the tree recursively
         _clean_tree(root)
-        
+
         # Convert back to string
         result = ET.tostring(root, encoding='unicode', method='xml')
-        
+
         # Remove XML declaration if present
         result = re.sub(r'<\?xml[^>]+\?>\s*', '', result)
-        
+
         return result
-        
+
     except ET.ParseError:
         # If parsing fails, fall back to regex-based cleaning
         return _regex_strip_unsupported(ssml_text)
 
 
 def _clean_tree(node: ET.Element) -> None:
-    """
-    Recursively remove unsupported tags AND their content from ElementTree.
-    """
-    tag = re.sub(r'^{.*}', '', node.tag).lower()
-    
-    # Process children first (depth-first)
-    children_to_remove = []
-    for child in list(node):
-        child_tag = re.sub(r'^{.*}', '', child.tag).lower()
-        
-        if child_tag not in SUPPORTED_TAGS:
-            # Mark unsupported child for removal (including all its content)
-            children_to_remove.append(child)
-        else:
-            # Recursively clean supported children
-            _clean_tree(child)
-    
-    # Remove unsupported children (this removes the tag AND all its content)
-    for child in children_to_remove:
-        # Preserve the tail text (text after the closing tag)
-        tail_text = child.tail
-        node.remove(child)
-        
-        # Append tail to previous sibling or parent text
-        if tail_text:
-            children = list(node)
-            if len(children) > 0:
-                # Append to last child's tail
-                if children[-1].tail:
-                    children[-1].tail += tail_text
-                else:
-                    children[-1].tail = tail_text
-            else:
-                # Append to parent's text
-                if node.text:
-                    node.text += tail_text
-                else:
-                    node.text = tail_text
+	"""
+	Recursively remove unsupported tags AND their content from ElementTree.
+	"""
+	tag = re.sub(r'^{.*}', '', node.tag).lower()
+
+	# Process children (need to track index for tail preservation)
+	i = 0
+	while i < len(node):
+		child = node[i]
+		child_tag = re.sub(r'^{.*}', '', child.tag).lower()
+
+		if child_tag not in SUPPORTED_TAGS:
+			# Save tail text before removing
+			tail_text = child.tail or ''
+			node.remove(child)
+
+			# Append tail to previous element or parent text
+			if i > 0:
+				# Append to previous sibling's tail
+				prev_child = node[i - 1]
+				combined = (prev_child.tail or '') + tail_text
+				prev_child.tail = re.sub(r'\s+', ' ', combined)
+			else:
+				# Append to parent's text
+				combined = (node.text or '') + tail_text
+				node.text = re.sub(r'\s+', ' ', combined)
+		# Don't increment i since we removed an element
+		else:
+			# Recursively clean supported children
+			_clean_tree(child)
+			i += 1
+
+	# Normalize whitespace in remaining text and tails
+	if node.text:
+		node.text = re.sub(r'\s+', ' ', node.text)
+
+	for child in node:
+		if child.tail:
+			child.tail = re.sub(r'\s+', ' ', child.tail)
 
 
 def _regex_strip_unsupported(text: str) -> str:
@@ -450,10 +452,10 @@ def _regex_strip_unsupported(text: str) -> str:
     # Pattern to match opening and closing tags with content
     # This will match: <tag>content</tag> or <tag attr="val">content</tag>
     tag_pattern = r'<\s*([a-zA-Z][a-zA-Z0-9_-]*)\b[^>]*>.*?</\s*\1\s*>|<\s*([a-zA-Z][a-zA-Z0-9_-]*)\b[^/>]*/>'
-    
+
     def is_supported_tag(tag_name: str) -> bool:
         return tag_name.lower() in SUPPORTED_TAGS
-    
+
     def replace_tag(match):
         full_match = match.group(0)
         # Extract tag name from opening tag
@@ -463,22 +465,36 @@ def _regex_strip_unsupported(text: str) -> str:
             if is_supported_tag(tag_name):
                 return full_match  # Keep supported tags
         return ''  # Remove unsupported tags and their content
-    
+
     # First pass: remove unsupported tags with content
     result = re.sub(tag_pattern, replace_tag, text, flags=re.DOTALL)
-    
+
     # Second pass: clean up any remaining unsupported self-closing or empty tags
     simple_tag_pattern = r'<\s*(/?)([a-zA-Z][a-zA-Z0-9_-]*)\b([^>]*)>'
-    
+
     def replace_simple_tag(match):
         tag_name = match.group(2).lower()
         if tag_name in SUPPORTED_TAGS:
             return match.group(0)
         return ''
-    
+
     result = re.sub(simple_tag_pattern, replace_simple_tag, result)
-    
+
     # Clean up any extra whitespace
     result = re.sub(r'\s+', ' ', result)
-    
+
     return result.strip()
+
+
+# Test cases
+if __name__ == '__main__':
+    test_cases = [
+        '<speak>Diagnostic prosody test. <ramesh>mihup company</ramesh> This first sentence is baseline—no effects.<break time="300ms"/><prosody rate="92%" pitch="-2st">Now I am slower and lower. You should hear my pace relax and my voice drop in pitch. Inside this slower section, <emphasis level="reduced">reduced emphasis</emphasis> should sound a touch softer and slightly quicker than the surrounding slow speech.</prosody>This line returns to normal speed and pitch.<break time="250ms"/><emphasis level="moderate">Moderate emphasis begins here.</emphasis>Compared to baseline, that bit should be a little louder and a hair slower.<break time="200ms"/><prosody rate="110%" pitch="+2st">Now I am faster and higher. You should hear a brighter tone and a snappier pace. <emphasis level="strong">Strong emphasis</emphasis> inside this fast section should momentarily punch louder and slow down slightly.</prosody>We are back to normal again.<break time="500ms"/>If everything worked: slow and low, then normal, then a modestly louder phrase, then fast and high with a strong punch, and finally back to neutral. Until our next delicious catastrophe—farewell!</speak>',
+    ]
+
+    print("=== strip_unsupported_ssml() tests ===\n")
+    for i, test in enumerate(test_cases, 1):
+        print(f"Test {i}:")
+        print(f"Input:  {test}")
+        print(f"Output: {strip_unsupported_ssml(test)}")
+        print()
