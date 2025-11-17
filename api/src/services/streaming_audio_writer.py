@@ -75,6 +75,9 @@ class StreamingAudioWriter:
 
         if finalize:
             if self.format != "pcm":
+                # Get the buffer data FIRST, before any operations that might close it
+                data = self.output_buffer.getvalue()
+                
                 try:
                     # Flush the encoder by encoding None
                     packets = self.stream.encode(None)
@@ -82,22 +85,24 @@ class StreamingAudioWriter:
                         self.container.mux(packet)
                     
                     logger.debug("Muxed final packets.")
+                    
+                    # If flush succeeded, get any additional data that was written
+                    additional_data = self.output_buffer.getvalue()[len(data):]
+                    if additional_data:
+                        data += additional_data
                 except Exception as e:
-                    # If encoding None fails, we may have already flushed
+                    # If encoding None fails (EOF error), the buffer might be closed
+                    # but we already have the data from before the flush attempt
                     logger.warning(f"Error during final encode flush (may be harmless): {e}")
                 
-                # Get the final bytes from the buffer *before* closing
-                data = self.output_buffer.getvalue()
-                
                 # Close the container - this writes the trailer
-                # Important: don't try to encode again after this
                 try:
                     self.container.close()
                 except Exception as e:
                     logger.warning(f"Error closing container (may be harmless): {e}")
                 
                 # Close the buffer
-                if hasattr(self, "output_buffer"):
+                if hasattr(self, "output_buffer") and not self.output_buffer.closed:
                     self.output_buffer.close()
                 
                 return data
