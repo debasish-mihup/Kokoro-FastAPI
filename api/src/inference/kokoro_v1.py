@@ -337,6 +337,7 @@ class KokoroV1(BaseModelBackend):
                 if self._check_memory():
                     self._clear_memory()
             text = strip_unsupported_ssml(text)
+            print("processed text: ", text)
             text = re.sub("mercedes", "Mursaydees", text, flags=re.IGNORECASE)
             # Handle voice input
             voice_path: str
