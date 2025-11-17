@@ -66,12 +66,22 @@ class StreamingAudioWriter:
         if hasattr(self, "output_buffer"):
             self.output_buffer.close()
     
+    def _needs_header_per_chunk(self) -> bool:
+        """Determine if this format needs headers in every chunk for independent decoding"""
+        # ADTS AAC has headers per frame already
+        # MP3, WAV, FLAC, Opus need special handling
+        return self.format in ["aac"]  # Only ADTS AAC is truly self-describing per frame
+    
     def _extract_header(self, data: bytes) -> bytes:
-        """Extract header information from the first chunk of encoded data"""
+        """Extract header information from the first chunk of encoded data
+        
+        For most formats, this extracts metadata/codec info that should only 
+        appear at the start of the stream. For ADTS AAC, returns empty as each
+        frame is self-contained.
+        """
         if self.format == "mp3":
-            # For MP3, we need to preserve the initial ID3 tags and first frame header
-            # MP3 frames start with 0xFF 0xFB (or similar sync pattern)
-            # We'll cache everything before the first actual audio frame
+            # For MP3, extract only ID3 tags (if present)
+            # Don't include frame headers as they're part of the frame data
             header_end = 0
             if data.startswith(b'ID3'):
                 # Skip ID3v2 tag if present
@@ -79,19 +89,12 @@ class StreamingAudioWriter:
                     # ID3v2 size is synchsafe integer at bytes 6-9
                     size = (data[6] << 21) | (data[7] << 14) | (data[8] << 7) | data[9]
                     header_end = 10 + size
-            
-            # Find first MP3 frame sync (0xFF 0xFx)
-            for i in range(header_end, len(data) - 1):
-                if data[i] == 0xFF and (data[i + 1] & 0xE0) == 0xE0:
-                    # Found first frame, include frame header in cached header
-                    # MP3 frame header is 4 bytes
-                    return data[:i + 4] if i + 4 <= len(data) else data[:i]
-            
-            return data[:header_end] if header_end > 0 else b""
+                    return data[:header_end]
+            return b""
         
         elif self.format == "aac":
             # For AAC with ADTS, each frame has its own header, so no global header needed
-            # ADTS frames are self-contained
+            # ADTS frames are self-contained - this is the format that works best for streaming
             return b""
         
         elif self.format == "opus":
@@ -156,7 +159,11 @@ class StreamingAudioWriter:
     ) -> bytes:
         """Write a chunk of audio data and return bytes in the target format.
         
-        All chunks will include necessary header information to be independently decodable.
+        Each chunk will contain necessary header information to be valid:
+        - MP3: ID3 tag (if present) prepended to each chunk
+        - AAC: ADTS frames already self-contained with headers
+        - WAV: RIFF header prepended to each chunk with updated size
+        - Other formats: Headers prepended where applicable
         
         Args:
             audio_data: Audio data to write, or None if finalizing
@@ -175,9 +182,9 @@ class StreamingAudioWriter:
                 data = self.output_buffer.getvalue()
                 self.close()
                 
-                # For final chunk, prepend header if needed
-                if self.cached_header and len(data) > 0:
-                    return self.cached_header + data
+                # For final chunk, apply header if needed
+                if len(data) > 0:
+                    return self._prepare_chunk_with_header(data, is_final=True)
                 return data
             else:
                 return b""
@@ -210,11 +217,91 @@ class StreamingAudioWriter:
             if not self.header_written and len(data) > 0:
                 self.cached_header = self._extract_header(data)
                 self.header_written = True
-                logger.debug(f"Cached header for {self.format}: {len(self.cached_header)} bytes")
-                return data  # First chunk already has header
+                if len(self.cached_header) > 0:
+                    logger.debug(f"Cached header for {self.format}: {len(self.cached_header)} bytes")
+                else:
+                    logger.debug(f"No extractable header for {self.format} (format has per-frame headers)")
             
-            # For subsequent chunks, prepend the cached header
-            if self.cached_header and len(data) > 0:
-                return self.cached_header + data
+            # Prepare chunk with appropriate header
+            if len(data) > 0:
+                return self._prepare_chunk_with_header(data, is_final=False)
             
             return data
+    
+    def _prepare_chunk_with_header(self, chunk_data: bytes, is_final: bool = False) -> bytes:
+        """Prepare a chunk with appropriate header for the format
+        
+        Args:
+            chunk_data: The encoded chunk data
+            is_final: Whether this is the final chunk
+            
+        Returns:
+            Chunk data with header prepended if applicable
+        """
+        if self.format == "aac":
+            # ADTS AAC frames already contain headers - return as-is
+            return chunk_data
+        
+        elif self.format == "mp3":
+            # For MP3, prepend ID3 tag (if we have one) to make chunk more compatible
+            # Each chunk will be: [ID3 tag (optional)] + [MP3 frames]
+            if self.cached_header and len(self.cached_header) > 0:
+                # Only prepend ID3, not frame headers
+                return self.cached_header + chunk_data
+            return chunk_data
+        
+        elif self.format == "wav":
+            # For WAV, create a complete RIFF/WAVE header for this chunk
+            # This makes each chunk a valid WAV file
+            if not self.cached_header:
+                return chunk_data
+            
+            # Strip any existing RIFF header from chunk_data
+            audio_data = chunk_data
+            if chunk_data.startswith(b'RIFF'):
+                # Find the 'data' chunk and extract only audio data
+                pos = 12
+                while pos < len(chunk_data) - 8:
+                    chunk_id = chunk_data[pos:pos+4]
+                    chunk_size = struct.unpack('<I', chunk_data[pos+4:pos+8])[0]
+                    if chunk_id == b'data':
+                        audio_data = chunk_data[pos+8:pos+8+chunk_size]
+                        break
+                    pos += 8 + chunk_size
+            
+            # Create new WAV header with correct data size
+            data_size = len(audio_data)
+            file_size = 36 + data_size  # Total file size - 8
+            
+            # Build complete WAV header
+            wav_header = b'RIFF'
+            wav_header += struct.pack('<I', file_size)
+            wav_header += b'WAVE'
+            wav_header += b'fmt '
+            wav_header += struct.pack('<I', 16)  # fmt chunk size
+            wav_header += struct.pack('<H', 1)   # audio format (PCM)
+            wav_header += struct.pack('<H', self.channels)
+            wav_header += struct.pack('<I', self.sample_rate)
+            wav_header += struct.pack('<I', self.sample_rate * self.channels * 2)  # byte rate
+            wav_header += struct.pack('<H', self.channels * 2)  # block align
+            wav_header += struct.pack('<H', 16)  # bits per sample
+            wav_header += b'data'
+            wav_header += struct.pack('<I', data_size)
+            
+            return wav_header + audio_data
+        
+        elif self.format == "flac":
+            # For FLAC, prepend the streaminfo and metadata blocks
+            if self.cached_header and len(self.cached_header) > 0:
+                return self.cached_header + chunk_data
+            return chunk_data
+        
+        elif self.format == "opus":
+            # For Opus in Ogg, prepend the header pages (OpusHead + OpusTags)
+            if self.cached_header and len(self.cached_header) > 0:
+                return self.cached_header + chunk_data
+            return chunk_data
+        
+        else:
+            # Unknown format - return as-is
+            return chunk_data
