@@ -418,10 +418,11 @@ Key Performance Metrics:
 # GPU: Requires NVIDIA GPU with CUDA 12.8 support (~35x-100x realtime speed)
 cd docker/gpu
 docker compose up --build
+CUDA_VISIBLE_DEVICES=0 docker compose up --build (Run this)
 
 # CPU: PyTorch CPU inference
 cd docker/cpu
-docker compose up --build
+docker compose up --build 
 ```
 
 *Note: Overall speed may have reduced somewhat with the structural changes to accommodate streaming. Looking into it.*
