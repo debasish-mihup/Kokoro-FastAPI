@@ -7,7 +7,7 @@ import re
 import tempfile
 from typing import AsyncGenerator, Dict, List, Tuple, Union
 from urllib import response
-
+import base64
 import aiofiles
 import numpy as np
 import torch
@@ -278,7 +278,23 @@ async def create_speech(
                     logger.error(f"Error in single output streaming: {e}")
                     writer.close()
                     raise
-
+            
+            # --- return_base64 support ---
+            if request.return_base64:
+                # Collect all streamed audio chunks
+                audio_chunks = []
+                async for chunk in audio_generator:
+                    audio_chunks.append(chunk if isinstance(chunk, bytes) else chunk.encode())
+                combined = b"".join(audio_chunks)
+                b64_str = base64.b64encode(combined).decode("ascii")
+                return Response(
+                    content=b64_str,
+                    media_type="text/plain",
+                    headers={
+                        "Content-Disposition": f"attachment; filename=speech.{request.response_format}",
+                    },
+                )
+            
             # Standard streaming without download link
             return StreamingResponse(
                 single_output(),
