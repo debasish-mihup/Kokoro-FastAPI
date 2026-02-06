@@ -279,21 +279,43 @@ async def create_speech(
                     writer.close()
                     raise
             
-            # --- return_base64 support ---
+            # --- return_base64 support (streamed, chunked) ---
             if request.return_base64:
-                # Collect all streamed audio chunks
-                audio_chunks = []
-                async for chunk in single_output():
-                    if chunk:
-                        audio_chunks.append(chunk)
-                combined = b"".join(audio_chunks)
-                b64_str = base64.b64encode(combined).decode("ascii")
-                writer.close()
-                return Response(
-                    content=b64_str,
+                # Max raw audio bytes per chunk (~32 KB).
+                # Keeps each base64 line under ~44 KB.
+                BASE64_CHUNK_SIZE = 32 * 1024
+                logger.info(f"return_base64=True: using chunked base64 streaming (chunk_size={BASE64_CHUNK_SIZE})")
+
+                async def base64_stream():
+                    chunk_num = 0
+                    try:
+                        async for chunk in single_output():
+                            if not chunk:
+                                continue
+                            # Split large audio blobs into smaller pieces
+                            offset = 0
+                            while offset < len(chunk):
+                                piece = chunk[offset : offset + BASE64_CHUNK_SIZE]
+                                offset += BASE64_CHUNK_SIZE
+                                chunk_num += 1
+                                b64_piece = base64.b64encode(piece).decode("ascii")
+                                logger.debug(f"base64 chunk {chunk_num}: {len(piece)} audio bytes -> {len(b64_piece)} b64 chars")
+                                yield b64_piece + "\n"
+                        logger.info(f"base64 streaming done: yielded {chunk_num} chunks")
+                    except Exception as e:
+                        logger.error(f"Error in base64 streaming: {e}")
+                        raise
+                    finally:
+                        writer.close()
+
+                return StreamingResponse(
+                    base64_stream(),
                     media_type="text/plain",
                     headers={
                         "Content-Disposition": f"attachment; filename=speech.{request.response_format}",
+                        "X-Accel-Buffering": "no",
+                        "Cache-Control": "no-cache",
+                        "Transfer-Encoding": "chunked",
                     },
                 )
             
