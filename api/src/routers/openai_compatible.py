@@ -283,10 +283,12 @@ async def create_speech(
             if request.return_base64:
                 # Collect all streamed audio chunks
                 audio_chunks = []
-                async for chunk in audio_generator:
-                    audio_chunks.append(chunk if isinstance(chunk, bytes) else chunk.encode())
+                async for chunk in single_output():
+                    if chunk:
+                        audio_chunks.append(chunk)
                 combined = b"".join(audio_chunks)
                 b64_str = base64.b64encode(combined).decode("ascii")
+                writer.close()
                 return Response(
                     content=b64_str,
                     media_type="text/plain",
@@ -369,6 +371,17 @@ async def create_speech(
                     if not temp_writer._finalized:
                         await temp_writer.__aexit__(None, None, None)
                     writer.close()
+
+            if request.return_base64:
+                b64_str = base64.b64encode(output).decode("ascii")
+                writer.close()
+                return Response(
+                    content=b64_str,
+                    media_type="text/plain",
+                    headers={
+                        "Content-Disposition": f"attachment; filename=speech.{request.response_format}",
+                    },
+                )
 
             return Response(
                 content=output,
