@@ -110,6 +110,7 @@ class OpenAISpeechRequest(BaseModel):
         default=False,
         description="If true, returns a download link in X-Download-Path header after streaming completes",
     )
+    return_base64: bool = False
     lang_code: Optional[str] = Field(
         default=None,
         description="Optional language code to use for text processing. If not provided, will use first letter of voice name.",
